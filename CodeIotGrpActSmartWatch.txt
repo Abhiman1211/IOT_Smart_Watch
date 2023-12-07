@@ -1,0 +1,97 @@
+#include <TinyGPS.h>
+#include <LiquidCrystal.h>
+#include <Wire.h>
+#include "RTClib.h"
+#define USE_ARDUINO_INTERRUPTS true    // Set-up low-level interrupts for most accurate BPM math.
+#include <PulseSensorPlayground.h>     // Includes the PulseSensorPlayground Library.
+
+TinyGPS gps;  //Creates a new instance of the TinyGPS object
+RTC_DS1307 rtc;
+LiquidCrystal lcd(13, 12, 11, 10, 9, 8);
+
+// PulseSensor Variables
+const int PulseWire = 0;       // PulseSensor PURPLE WIRE connected to ANALOG PIN 0
+const int LED13 = 13;          // The on-board Arduino LED, close to PIN 13.
+int Threshold = 550;           // Determine which Signal to "count as a beat" and which to ignore.
+PulseSensorPlayground pulseSensor;  // Creates an instance of the PulseSensorPlayground object called "pulseSensor"
+
+void setup() {
+  Serial.begin(9600);
+  Serial.print("Simple TinyGPS library v. ");
+  Serial.println(TinyGPS::library_version());
+  Serial.println("Testing GPS");
+  Serial.println("Designed by: Team 4");
+  Serial.println();
+
+  lcd.begin(16, 2);
+  lcd.print("Initializing RTC...");
+  if (!rtc.begin()) {
+    lcd.setCursor(0, 1);
+    lcd.print("RTC failed");
+    while (1);
+  }
+  if (!rtc.isrunning()) {
+    lcd.setCursor(0, 1);
+    lcd.print("RTC is NOT running");
+    while (1);
+  }
+  lcd.clear();
+
+  // PulseSensor setup
+  pulseSensor.analogInput(PulseWire);
+  pulseSensor.blinkOnPulse(LED13);
+  pulseSensor.setThreshold(Threshold);
+
+  if (pulseSensor.begin()) {
+    Serial.println("We created a pulseSensor Object !");
+  }
+}
+
+void loop() {
+  bool newData = false;
+  unsigned long chars;
+  unsigned short sentences, failed;
+
+  // GPS data
+  for (unsigned long start = millis(); millis() - start < 1000;) {
+    while (Serial.available()) {
+      char c = Serial.read();
+      if (gps.encode(c))
+        newData = true;
+    }
+  }
+
+  if (newData) {
+    float flat, flon;
+    unsigned long age;
+    gps.f_get_position(&flat, &flon, &age);
+    Serial.print("Latitude = ");
+    Serial.print(flat == TinyGPS::GPS_INVALID_F_ANGLE ? 0.0 : flat, 6);
+    Serial.print(" Longitude = ");
+    Serial.print(flon == TinyGPS::GPS_INVALID_F_ANGLE ? 0.0 : flon, 6);
+  }
+
+  DateTime now = rtc.now();
+  lcd.setCursor(0, 0);
+  lcd.print(now.day(), DEC);
+  lcd.print('/');
+  lcd.print(now.month(), DEC);
+  lcd.print('/');
+  lcd.print(now.year(), DEC);
+  lcd.setCursor(0, 1);
+  lcd.print(now.hour(), DEC);
+  lcd.print(':');
+  lcd.print(now.minute(), DEC);
+  lcd.print(':');
+  lcd.print(now.second(), DEC);
+
+  // PulseSensor data
+  int myBPM = pulseSensor.getBeatsPerMinute();
+  if (pulseSensor.sawStartOfBeat()) {
+    Serial.println("♥  A HeartBeat Happened ! ");
+    Serial.print("BPM: ");
+    Serial.println(myBPM);
+  }
+
+  delay(1000);
+}
